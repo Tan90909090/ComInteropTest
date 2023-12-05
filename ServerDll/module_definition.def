@@ -1,0 +1,4 @@
+; Warning LNK4104 export of symbol 'DllCanUnloadNow' should be PRIVATE
+EXPORTS
+    DllCanUnloadNow PRIVATE
+    DllGetClassObject PRIVATE
