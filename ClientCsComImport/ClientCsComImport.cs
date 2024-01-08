@@ -5,7 +5,7 @@ namespace ClientTestCSharpComImport;
 
 [SupportedOSPlatform("windows")]
 
-internal class TestComImport
+internal class ClientCsComImport
 {
     [STAThread]
     static void Main()

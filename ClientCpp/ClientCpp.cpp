@@ -1,4 +1,4 @@
-// ClientTestCpp.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// ClientCpp.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "../ServerDll/ClsIds.hpp"
@@ -49,7 +49,7 @@ int main()
 	hr = pWalkCB->Release();
 	hr = pWalk->Release();
 
-	// 過剰ReleaseしようとするとUser-After-Freeなので未定義動作
+	// 既に完全にRelease済み。更に使おうとするとUser-After-Freeなので未定義動作
 	// hr = pWalk->Release(); // 試したら「Exception thrown: read access violation. pWalk->was 0xFFFFFFFFFFFFFFEF.」エラー
 
 	CoUninitialize();

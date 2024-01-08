@@ -6,25 +6,20 @@ namespace ClientTestCSharpComImport;
 
 [SupportedOSPlatform("windows")]
 
-internal class TestGeneratedComInterfaceUnique
+internal class ClientCsGeneratedComInterface
 {
     [STAThread]
     private static void Main()
     {
         UseCom();
         GC.Collect();
-
-        // ComObject.FinalReleaseを呼び出していない場合は、ファイナライザでCOMオブジェクトをReleaseする。
-        // ComObject.FinalReleaseを呼び出しており、かつファイナライザも実行する場合は、F11でステップ実行すると「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生する場合や「System.NullReferenceException: 'Object reference not set to an instance of an object.'」が発生する場合があった。
-        // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
-        // ComObject.FinalReleaseを呼び出しており、かつGC.SupressFinalizeでファイナライザを抑制している場合は、既にRelease済みだしGC中でも何も起こらないので平和。
-        GC.WaitForPendingFinalizers();
-
+        GC.WaitForPendingFinalizers(); // F11ステップ実行で試すと、このタイミングでCOMオブジェクトが適切に解放された
         GC.Collect();
     }
 
     private static void UseCom()
     {
+        // それはそうとPreseveSig=falseなDllImportをQuickFixでLibraryImportへ返る時、自動的にMarshal.ThrowExceptionForHRが挿入されるようになって素敵。
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalk,
             null,
@@ -45,48 +40,25 @@ internal class TestGeneratedComInterfaceUnique
         pNamespaceWalkCB2.WalkComplete(0);
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
-        Console.Write("""
-            Do you test to what hapen if you explicitly call ComObject.FinalRelease?
-            0: Don't call ComObject.FinalRelease.
-            1: Call ComObject.FinalRelease only. Finalyzers will be called later.
-            2: Call ComObject.FinalRelease and GC.SuppressFinalize.
-            > 
-            """);
-        _ = int.TryParse(Console.ReadLine(), out int choise);
-        if (choise >= 1)
-        {
-            // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
-            // UniqueComInterfaceMarshallerを使う場合だと、ComObject.UniqueInstance==trueであるため、ComObject.FinalRelease()を呼び出した時点で解放できます！
-            ((ComObject)objNamespaceWalkCB).FinalRelease();
-            ((ComObject)objNamespaceWalk).FinalRelease();
+        // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
+        // デフォルトマーシャラーの場合だと、ComObject.UniqueInstance==falseであるため、ComObject.FinalRelease()を呼んでも効果はありません
+        ((ComObject)objNamespaceWalkCB).FinalRelease();
+        ((ComObject)objNamespaceWalk).FinalRelease();
 
-            // 改めてReleaseしようとするためUse-After-Freeが起こる。
-            // F11のステップオーバーで内部的な処理も逐一確認していると、「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生した。
-            // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
-            // ((ComObject)objNamespaceWalk).FinalRelease(); 
-
-            if (choise >= 2)
-            {
-                // ただそのままだとファイナライザでも改めてReleaseしようとします。Use-After-Freeでは？そういうわけで防ぎます。
-#pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
-                GC.SuppressFinalize(objNamespaceWalk);
-                GC.SuppressFinalize(objNamespaceWalkCB);
-#pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
-            }
-        }
+        // 普通にまだCOMオブジェクトを問題なく使えます
+        pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
     }
 }
 
 internal static partial class NativeMethods
 {
-    // 最後の引数にUniqueComInterfaceMarshallerを追加しています！！！！！！！！
     [LibraryImport("Ole32.dll")]
     internal static partial int CoCreateInstance(
         in Guid rclsid,
         [MarshalAs(UnmanagedType.Interface)] object? pUnkOuter,
         uint dwClsContext,
         in Guid riid,
-        [MarshalUsing(typeof(UniqueComInterfaceMarshaller<object>))] out object ppv);
+        [MarshalAs(UnmanagedType.Interface)] out object ppv);
 
     internal const uint CLSCTX_INPROC_SERVER = 1;
     internal const uint CLSCTX_LOCAL_SERVER = 4;
