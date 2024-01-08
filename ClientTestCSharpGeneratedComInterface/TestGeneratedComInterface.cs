@@ -8,6 +8,7 @@ namespace ClientTestCSharpComImport;
 
 internal class TestGeneratedComInterface
 {
+    [STAThread]
     private static void Main()
     {
         UseCom();
@@ -18,17 +19,18 @@ internal class TestGeneratedComInterface
 
     private static void UseCom()
     {
+        // それはそうとPreseveSig=falseなDllImportをQuickFixでLibraryImportへ返る時、自動的にMarshal.ThrowExceptionForHRが挿入されるようになって素敵。
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalk,
             null,
-            NativeMethods.CLSCTX_LOCAL_SERVER,
+            NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalk).GUID,
             out object objNamespaceWalk));
         var pNamespaceWalk = (INamespaceWalk)objNamespaceWalk;
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalkCB,
             null,
-            NativeMethods.CLSCTX_LOCAL_SERVER,
+            NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalkCB).GUID,
             out object objNamespaceWalkCB));
         var pNamespaceWalkCB = (INamespaceWalkCB)objNamespaceWalkCB;
@@ -39,11 +41,9 @@ internal class TestGeneratedComInterface
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
         // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
-        // デフォルトマーシャラーの場合だと、ComObject.UniqueInstance==falseでるため、ComObject.FinalRelease()を呼んでも効果はありません
+        // デフォルトマーシャラーの場合だと、ComObject.UniqueInstance==falseであるため、ComObject.FinalRelease()を呼んでも効果はありません
         ((ComObject)objNamespaceWalkCB).FinalRelease();
         ((ComObject)objNamespaceWalk).FinalRelease();
-
-        pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
     }
 }
 
@@ -57,6 +57,7 @@ internal static partial class NativeMethods
         in Guid riid,
         [MarshalAs(UnmanagedType.Interface)] out object ppv);
 
+    internal const uint CLSCTX_INPROC_SERVER = 1;
     internal const uint CLSCTX_LOCAL_SERVER = 4;
 
     internal static readonly Guid CLSID_DummyNamespaceWalk = Guid.Parse("{3A9F4A2A-C7C6-4D9D-8F9E-D71EE470B57F}");

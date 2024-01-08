@@ -1,7 +1,7 @@
 // ClientTestCpp.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#include "../ComComponentRegisterer/ComServer.hpp"
+#include "../ServerDll/ClsIds.hpp"
 
 int main()
 {
@@ -17,7 +17,7 @@ int main()
 	// うーん、CLSCTX_LOCAL_SERVER諦めたほうがいいのかも……分からん……
 	// 試しに|CLSCTX_INPROC_HANDLERもOR指定してみたけど変化なし
 	// https://ichigopack.net/win32com/com_exeserver_2.html#:~:text=%E3%81%AA%E3%82%8B%E3%81%A7%E3%81%97%E3%82%87%E3%81%86%E3%80%82-,%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89%E4%BB%B2%E4%BB%8B%E3%81%AE%E6%96%B9%E6%B3%95,-%E5%85%88%E3%81%AEproxy のことでは？それはそうでは？
-	auto dwClsContext = CLSCTX_LOCAL_SERVER;
+	auto dwClsContext = CLSCTX_INPROC_SERVER;
 	hr = CoCreateInstance(
 		CLSID_DummyNamespaceWalk,
 		nullptr,
@@ -48,19 +48,9 @@ int main()
 	hr = pWalkCB2->Release();
 	hr = pWalkCB->Release();
 	hr = pWalk->Release();
-	hr = pWalk->Release(); // 死なない……
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
-	hr = pWalk->Release();
+
+	// 過剰ReleaseしようとするとUser-After-Freeなので未定義動作
+	// hr = pWalk->Release(); // 試したら「Exception thrown: read access violation. pWalk->was 0xFFFFFFFFFFFFFFEF.」エラー
 
 	CoUninitialize();
 }

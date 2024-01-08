@@ -8,11 +8,18 @@ namespace ClientTestCSharpComImport;
 
 internal class TestGeneratedComInterfaceUnique
 {
+    [STAThread]
     private static void Main()
     {
         UseCom();
         GC.Collect();
-        GC.WaitForPendingFinalizers(); // 今回はComObject.FinalRelease()で解放できているので、ファイナライザを待つ必要はありません
+
+        // ComObject.FinalReleaseを呼び出していない場合は、ファイナライザでCOMオブジェクトをReleaseする。
+        // ComObject.FinalReleaseを呼び出しており、かつファイナライザも実行する場合は、F11でステップ実行すると「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生する場合や「System.NullReferenceException: 'Object reference not set to an instance of an object.'」が発生する場合があった。
+        // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
+        // ComObject.FinalReleaseを呼び出しており、かつGC.SupressFinalizeでファイナライザを抑制している場合は、既にRelease済みだしGC中でも何も起こらないので平和。
+        GC.WaitForPendingFinalizers();
+
         GC.Collect();
     }
 
@@ -21,14 +28,14 @@ internal class TestGeneratedComInterfaceUnique
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalk,
             null,
-            NativeMethods.CLSCTX_LOCAL_SERVER,
+            NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalk).GUID,
             out object objNamespaceWalk));
         var pNamespaceWalk = (INamespaceWalk)objNamespaceWalk;
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalkCB,
             null,
-            NativeMethods.CLSCTX_LOCAL_SERVER,
+            NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalkCB).GUID,
             out object objNamespaceWalkCB));
         var pNamespaceWalkCB = (INamespaceWalkCB)objNamespaceWalkCB;
@@ -38,33 +45,35 @@ internal class TestGeneratedComInterfaceUnique
         pNamespaceWalkCB2.WalkComplete(0);
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
-        // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
-        // UniqueComInterfaceMarshallerを使う場合だと、ComObject.UniqueInstance==trueであるため、ComObject.FinalRelease()を呼び出した時点で解放できます！
-        ((ComObject)objNamespaceWalkCB).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
+        Console.Write("""
+            Do you test to what hapen if you explicitly call ComObject.FinalRelease?
+            0: Don't call ComObject.FinalRelease.
+            1: Call ComObject.FinalRelease only. Finalyzers will be called later.
+            2: Call ComObject.FinalRelease and GC.SuppressFinalize.
+            > 
+            """);
+        _ = int.TryParse(Console.ReadLine(), out int choise);
+        if (choise >= 1)
+        {
+            // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
+            // UniqueComInterfaceMarshallerを使う場合だと、ComObject.UniqueInstance==trueであるため、ComObject.FinalRelease()を呼び出した時点で解放できます！
+            ((ComObject)objNamespaceWalkCB).FinalRelease();
+            ((ComObject)objNamespaceWalk).FinalRelease();
 
-        // ただそのままだとファイナライザでも改めてReleaseしようとします。Use-After-Freeでは？そういうわけで防ぎます。
-        GC.SuppressFinalize(objNamespaceWalk);
-        GC.SuppressFinalize(objNamespaceWalkCB);
+            // 改めてReleaseしようとするためUse-After-Freeが起こる。
+            // F11のステップオーバーで内部的な処理も逐一確認していると、「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生した。
+            // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
+            // ((ComObject)objNamespaceWalk).FinalRelease(); 
 
-        // 解放後に使おうとすると、Use-After-Freeかも……？
-        // pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
+            if (choise >= 2)
+            {
+                // ただそのままだとファイナライザでも改めてReleaseしようとします。Use-After-Freeでは？そういうわけで防ぎます。
+#pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
+                GC.SuppressFinalize(objNamespaceWalk);
+                GC.SuppressFinalize(objNamespaceWalkCB);
+#pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
+            }
+        }
     }
 }
 
@@ -79,6 +88,7 @@ internal static partial class NativeMethods
         in Guid riid,
         [MarshalUsing(typeof(UniqueComInterfaceMarshaller<object>))] out object ppv);
 
+    internal const uint CLSCTX_INPROC_SERVER = 1;
     internal const uint CLSCTX_LOCAL_SERVER = 4;
 
     internal static readonly Guid CLSID_DummyNamespaceWalk = Guid.Parse("{3A9F4A2A-C7C6-4D9D-8F9E-D71EE470B57F}");

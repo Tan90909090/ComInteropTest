@@ -156,6 +156,10 @@
   <ItemGroup>
     <None Include="module_definition.def" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ClsIds.hpp" />
+    <ClInclude Include="ImplementedClasses.hpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
