@@ -6,11 +6,20 @@
 #include <shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib") // for QISearch
 
-#define CONSOLE_COLOR_DEFAULT "\x1b[0m"
-#define CONSOLE_COLOR_RED "\x1b[31m"
-#define CONSOLE_COLOR_GREEN "\x1b[32m"
-#define CONSOLE_COLOR_BLUE "\x1b[34m"
-#define CONSOLE_COLOR_YELLOW "\x1b[33m"
+#define USE_ESCAPE_CHARACTER_TO_COLOR_OUTPUT 1
+#if USE_ESCAPE_CHARACTER_TO_COLOR_OUTPUT
+	#define CONSOLE_COLOR_DEFAULT "\x1b[0m"
+	#define CONSOLE_COLOR_RED "\x1b[31m"
+	#define CONSOLE_COLOR_GREEN "\x1b[32m"
+	#define CONSOLE_COLOR_BLUE "\x1b[34m"
+	#define CONSOLE_COLOR_YELLOW "\x1b[33m"
+#else
+	#define CONSOLE_COLOR_DEFAULT
+	#define CONSOLE_COLOR_RED
+	#define CONSOLE_COLOR_GREEN
+	#define CONSOLE_COLOR_BLUE
+	#define CONSOLE_COLOR_YELLOW
+#endif
 
 struct CDummyNamespaceWalkCB : INamespaceWalkCB2
 {

@@ -13,39 +13,44 @@ internal class ClientCsGeneratedComInterface
     {
         UseCom();
         GC.Collect();
-        GC.WaitForPendingFinalizers(); // F11ステップ実行で試すと、このタイミングでCOMオブジェクトが適切に解放された
+        GC.WaitForPendingFinalizers(); // ComObject.Finalizeが呼び出されて各種ネイティブCOMオブジェクトはReleaseされます
         GC.Collect();
     }
 
     private static void UseCom()
     {
-        // それはそうとPreseveSig=falseなDllImportをQuickFixでLibraryImportへ返る時、自動的にMarshal.ThrowExceptionForHRが挿入されるようになって素敵。
+        // COMオブジェクト生成
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalk,
             null,
             NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalk).GUID,
-            out object objNamespaceWalk));
+            out object? objNamespaceWalk));
         var pNamespaceWalk = (INamespaceWalk)objNamespaceWalk;
+
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalkCB,
             null,
             NativeMethods.CLSCTX_INPROC_SERVER,
             typeof(INamespaceWalkCB).GUID,
-            out object objNamespaceWalkCB));
+            out object? objNamespaceWalkCB));
         var pNamespaceWalkCB = (INamespaceWalkCB)objNamespaceWalkCB;
         var pNamespaceWalkCB2 = (INamespaceWalkCB2)pNamespaceWalkCB;
 
+        // 適当に使う
         pNamespaceWalkCB.InitializeProgressDialog(out _, out _);
         pNamespaceWalkCB2.WalkComplete(0);
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
-        // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
-        // デフォルトマーシャラーの場合だと、ComObject.UniqueInstance==falseであるため、ComObject.FinalRelease()を呼んでも効果はありません
-        ((ComObject)objNamespaceWalkCB).FinalRelease();
-        ((ComObject)objNamespaceWalk).FinalRelease();
+        // 使い終わったので解放したかったです
+        // LibraryImportAttributeで生成したCOMオブジェクトはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
+        // Marshal.ReleaseComObject(pNamespaceWalk); // 「SYSLIB1099 The method 'int Marshal.ReleaseComObject(object o)' only supports runtime-based COM interop and will not work with type 'INamespaceWalk'」
 
-        // 普通にまだCOMオブジェクトを問題なく使えます
+        // また、デフォルトのComInterfaceMarshaller<T>の場合だとComObject.UniqueInstanceがfalseであるため、ComObject.FinalRelease()を呼んでも無意味です
+        ((ComObject)objNamespaceWalkCB).FinalRelease(); // 無意味、Releaseされない
+        ((ComObject)objNamespaceWalk).FinalRelease(); // 無意味、Releaseされない
+
+        // Releaseされていないので、COMオブジェクトをまだ使えます
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
     }
 }
@@ -61,7 +66,6 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.Interface)] out object ppv);
 
     internal const uint CLSCTX_INPROC_SERVER = 1;
-    internal const uint CLSCTX_LOCAL_SERVER = 4;
 
     internal static readonly Guid CLSID_DummyNamespaceWalk = Guid.Parse("{3A9F4A2A-C7C6-4D9D-8F9E-D71EE470B57F}");
     internal static readonly Guid CLSID_DummyNamespaceWalkCB = Guid.Parse("{1B94A81D-A105-428D-8902-849F8D6483A2}");
@@ -80,7 +84,7 @@ internal partial interface INamespaceWalk
 
     void GetIDArrayResult(
         out uint pcItems,
-        out IntPtr prgpidl); // actual is "PIDLIST_ABSOLUTE **"
+        out IntPtr prgpidl); // The actual type is "PIDLIST_ABSOLUTE **"
 };
 
 [GeneratedComInterface]
@@ -100,7 +104,7 @@ internal partial interface INamespaceWalkCB
         [MarshalAs(UnmanagedType.Interface)] object psf,
         IntPtr pidl);
 
-    // 引数は実際はLPWSTR *だけれど、outで受けるとBStrとして扱いそうなのでIntPtrでごまかす
+    // Actual parameter types are "LPSTR*". If I write "out string" then runtime use it as "BStr", so I use "out IntPtr" here.
     void InitializeProgressDialog(
         out IntPtr ppszTitle,
         out IntPtr ppszCancel);

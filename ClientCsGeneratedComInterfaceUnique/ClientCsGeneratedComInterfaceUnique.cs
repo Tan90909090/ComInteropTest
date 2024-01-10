@@ -14,10 +14,10 @@ internal class ClientCsGeneratedComInterfaceUnique
         UseCom();
         GC.Collect();
 
-        // ComObject.FinalReleaseを呼び出していない場合は、ファイナライザでCOMオブジェクトをReleaseする。
-        // ComObject.FinalReleaseを呼び出しており、かつファイナライザも実行する場合は、F11でステップ実行すると「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生する場合や「System.NullReferenceException: 'Object reference not set to an instance of an object.'」が発生する場合があった。
-        // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
-        // ComObject.FinalReleaseを呼び出しており、かつGC.SupressFinalizeでファイナライザを抑制している場合は、既にRelease済みだしGC中でも何も起こらないので平和。
+        // ComObject.FinalReleaseを呼び出していない場合は、ComObject.Finalizeが呼びだされて各種ネイティブCOMオブジェクトはReleaseされます。
+        // ComObject.FinalReleaseを呼び出しており、かつComObject.Finalizeも実行する場合は、F11でステップ実行すると「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生する場合や「System.NullReferenceException: 'Object reference not set to an instance of an object.'」が発生する場合がありました。
+        // ただし、F10等のステップ実行やF5でまとめて実行すると、このコードでは終了コード0で完了しました。
+        // もちろん、ComObject.FinalReleaseを呼び出しており、かつGC.SupressFinalizeで抑制している場合は、既にRelease済みかつGC中でも何も起こらないので問題ありません。
         GC.WaitForPendingFinalizers();
 
         GC.Collect();
@@ -25,6 +25,7 @@ internal class ClientCsGeneratedComInterfaceUnique
 
     private static void UseCom()
     {
+        // COMオブジェクト生成
         Marshal.ThrowExceptionForHR(NativeMethods.CoCreateInstance(
             NativeMethods.CLSID_DummyNamespaceWalk,
             null,
@@ -41,14 +42,16 @@ internal class ClientCsGeneratedComInterfaceUnique
         var pNamespaceWalkCB = (INamespaceWalkCB)objNamespaceWalkCB;
         var pNamespaceWalkCB2 = (INamespaceWalkCB2)pNamespaceWalkCB;
 
+        // 適当に使う
         pNamespaceWalkCB.InitializeProgressDialog(out _, out _);
         pNamespaceWalkCB2.WalkComplete(0);
         pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
+        // 使い終わったので解放
         Console.Write("""
             Do you test to what hapen if you explicitly call ComObject.FinalRelease?
             0: Don't call ComObject.FinalRelease.
-            1: Call ComObject.FinalRelease only. Finalyzers will be called later.
+            1: Call ComObject.FinalRelease only. ComObject.Finalize will be called later, and cause UNDEFINED BEHAVIOR!.
             2: Call ComObject.FinalRelease and GC.SuppressFinalize.
             > 
             """);
@@ -56,18 +59,17 @@ internal class ClientCsGeneratedComInterfaceUnique
         if (choise >= 1)
         {
             // GeneratedComInterface用のinterfaceはMarshal.ReleaseComObjectへ渡せません。渡すとArgumentExceptionになります。
-            // UniqueComInterfaceMarshallerを使う場合だと、ComObject.UniqueInstance==trueであるため、ComObject.FinalRelease()を呼び出した時点で解放できます！
+            // UniqueComInterfaceMarshallerを使う場合だと、ComObject.UniqueInstanceがtrueであるため、ComObject.FinalRelease()で明示的に解放できます。
             ((ComObject)objNamespaceWalkCB).FinalRelease();
             ((ComObject)objNamespaceWalk).FinalRelease();
 
-            // 改めてReleaseしようとするためUse-After-Freeが起こる。
-            // F11のステップオーバーで内部的な処理も逐一確認していると、「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生した。
-            // ただし、F10等のステップ実行やF5でまとめて実行では問題なく終了コード0で完了した……
-            // ((ComObject)objNamespaceWalk).FinalRelease(); 
+            // Release後に使おうとすると、Use-After-Freeが起こります。
+            // 試すと、「System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'」例外が発生しました。
+            // pNamespaceWalk.Walk(null, 0, 0, pNamespaceWalkCB);
 
             if (choise >= 2)
             {
-                // ただそのままだとファイナライザでも改めてReleaseしようとします。Use-After-Freeでは？そういうわけで防ぎます。
+                // このままではGC発動時のFinalize時に改めてReleaseしようとしてUse-After-Freeが起こります。そういうわけで防ぎます。
 #pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
                 GC.SuppressFinalize(objNamespaceWalk);
                 GC.SuppressFinalize(objNamespaceWalkCB);
@@ -79,7 +81,7 @@ internal class ClientCsGeneratedComInterfaceUnique
 
 internal static partial class NativeMethods
 {
-    // 最後の引数にUniqueComInterfaceMarshallerを追加しています！！！！！！！！
+    // 最後のout引数にUniqueComInterfaceMarshallerを指定しています
     [LibraryImport("Ole32.dll")]
     internal static partial int CoCreateInstance(
         in Guid rclsid,
@@ -89,7 +91,6 @@ internal static partial class NativeMethods
         [MarshalUsing(typeof(UniqueComInterfaceMarshaller<object>))] out object ppv);
 
     internal const uint CLSCTX_INPROC_SERVER = 1;
-    internal const uint CLSCTX_LOCAL_SERVER = 4;
 
     internal static readonly Guid CLSID_DummyNamespaceWalk = Guid.Parse("{3A9F4A2A-C7C6-4D9D-8F9E-D71EE470B57F}");
     internal static readonly Guid CLSID_DummyNamespaceWalkCB = Guid.Parse("{1B94A81D-A105-428D-8902-849F8D6483A2}");
@@ -108,7 +109,7 @@ internal partial interface INamespaceWalk
 
     void GetIDArrayResult(
         out uint pcItems,
-        out IntPtr prgpidl); // actual is "PIDLIST_ABSOLUTE **"
+        out IntPtr prgpidl); // The actual type is "PIDLIST_ABSOLUTE **"
 };
 
 [GeneratedComInterface]
@@ -128,7 +129,7 @@ internal partial interface INamespaceWalkCB
         [MarshalAs(UnmanagedType.Interface)] object psf,
         IntPtr pidl);
 
-    // 引数は実際はLPWSTR *だけれど、outで受けるとBStrとして扱いそうなのでIntPtrでごまかす
+    // Actual parameter types are "LPSTR*". If I write "out string" then runtime use it as "BStr", so I use "out IntPtr" here.
     void InitializeProgressDialog(
         out IntPtr ppszTitle,
         out IntPtr ppszCancel);
